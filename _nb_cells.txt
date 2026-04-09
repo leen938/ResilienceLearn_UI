@@ -1,0 +1,19 @@
+0 code import pandas as pd
+1 markdown Student/Admin User
+2 code import os
+3 code os.listdir("../data")
+4 code # Clean column names
+5 code #Encoding ✔️
+6 code # Drop high-cardinality / non-predictive columns
+7 code # Basic dataset summary
+8 code # Create binary risk label
+9 code # Make risk_label integer and drop the original target column to avoid leakage
+10 code #test and train split (20% test,80% train) 
+11 code from sklearn.linear_model import LinearRegression
+12 code import importlib
+13 code from sklearn.ensemble import RandomForestRegressor
+14 markdown “After preprocessing and feature engineering, both Linear Regression and Random Forest models produced positive R² score
+15 code import pandas as pd
+16 markdown what affects mental health the most:The higher the feature appears → the more important it is.
+17 code import matplotlib.pyplot as plt
+18 markdown The graph is showing: Each bar = how important a feature is

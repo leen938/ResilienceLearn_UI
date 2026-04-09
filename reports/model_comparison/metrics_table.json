@@ -1,0 +1,112 @@
+[
+  {
+    "model": "Random Forest",
+    "train_ms": 208,
+    "test_accuracy": 0.8,
+    "test_precision": 0.75,
+    "test_recall": 0.8333,
+    "test_f1": 0.7895,
+    "test_roc_auc": 0.8712,
+    "cv_roc_auc_5fold": 0.8603,
+    "notes": ""
+  },
+  {
+    "model": "Extra Trees",
+    "train_ms": 281,
+    "test_accuracy": 0.825,
+    "test_precision": 0.8235,
+    "test_recall": 0.7778,
+    "test_f1": 0.8,
+    "test_roc_auc": 0.8611,
+    "cv_roc_auc_5fold": 0.8454,
+    "notes": ""
+  },
+  {
+    "model": "HistGradientBoosting",
+    "train_ms": 1523,
+    "test_accuracy": 0.8,
+    "test_precision": 0.7778,
+    "test_recall": 0.7778,
+    "test_f1": 0.7778,
+    "test_roc_auc": 0.8611,
+    "cv_roc_auc_5fold": 0.8342,
+    "notes": ""
+  },
+  {
+    "model": "AdaBoost",
+    "train_ms": 29,
+    "test_accuracy": 0.775,
+    "test_precision": 0.7143,
+    "test_recall": 0.8333,
+    "test_f1": 0.7692,
+    "test_roc_auc": 0.8611,
+    "cv_roc_auc_5fold": 0.83,
+    "notes": ""
+  },
+  {
+    "model": "Gradient Boosting",
+    "train_ms": 50,
+    "test_accuracy": 0.775,
+    "test_precision": 0.7368,
+    "test_recall": 0.7778,
+    "test_f1": 0.7568,
+    "test_roc_auc": 0.8662,
+    "cv_roc_auc_5fold": 0.8159,
+    "notes": ""
+  },
+  {
+    "model": "Logistic Regression",
+    "train_ms": 4,
+    "test_accuracy": 0.75,
+    "test_precision": 0.75,
+    "test_recall": 0.6667,
+    "test_f1": 0.7059,
+    "test_roc_auc": 0.8359,
+    "cv_roc_auc_5fold": 0.8133,
+    "notes": ""
+  },
+  {
+    "model": "SVM (RBF, calibrated)",
+    "train_ms": 11,
+    "test_accuracy": 0.725,
+    "test_precision": 0.7059,
+    "test_recall": 0.6667,
+    "test_f1": 0.6857,
+    "test_roc_auc": 0.7929,
+    "cv_roc_auc_5fold": 0.8015,
+    "notes": ""
+  },
+  {
+    "model": "KNN",
+    "train_ms": 2,
+    "test_accuracy": 0.775,
+    "test_precision": 0.7647,
+    "test_recall": 0.7222,
+    "test_f1": 0.7429,
+    "test_roc_auc": 0.7854,
+    "cv_roc_auc_5fold": 0.7892,
+    "notes": ""
+  },
+  {
+    "model": "Decision Tree",
+    "train_ms": 15,
+    "test_accuracy": 0.725,
+    "test_precision": 0.6667,
+    "test_recall": 0.7778,
+    "test_f1": 0.7179,
+    "test_roc_auc": 0.7298,
+    "cv_roc_auc_5fold": 0.7165,
+    "notes": ""
+  },
+  {
+    "model": "Baseline (most_frequent)",
+    "train_ms": 0,
+    "test_accuracy": 0.55,
+    "test_precision": 0.0,
+    "test_recall": 0.0,
+    "test_f1": 0.0,
+    "test_roc_auc": 0.5,
+    "cv_roc_auc_5fold": 0.5,
+    "notes": ""
+  }
+]

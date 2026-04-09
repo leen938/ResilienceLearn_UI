@@ -1,0 +1,11 @@
+model,train_ms,test_accuracy,test_precision,test_recall,test_f1,test_roc_auc,cv_roc_auc_5fold,notes
+Random Forest,208,0.8,0.75,0.8333,0.7895,0.8712,0.8603,
+Extra Trees,281,0.825,0.8235,0.7778,0.8,0.8611,0.8454,
+HistGradientBoosting,1523,0.8,0.7778,0.7778,0.7778,0.8611,0.8342,
+AdaBoost,29,0.775,0.7143,0.8333,0.7692,0.8611,0.83,
+Gradient Boosting,50,0.775,0.7368,0.7778,0.7568,0.8662,0.8159,
+Logistic Regression,4,0.75,0.75,0.6667,0.7059,0.8359,0.8133,
+"SVM (RBF, calibrated)",11,0.725,0.7059,0.6667,0.6857,0.7929,0.8015,
+KNN,2,0.775,0.7647,0.7222,0.7429,0.7854,0.7892,
+Decision Tree,15,0.725,0.6667,0.7778,0.7179,0.7298,0.7165,
+Baseline (most_frequent),0,0.55,0.0,0.0,0.0,0.5,0.5,
