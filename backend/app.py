@@ -12,15 +12,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import joblib
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
-
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from ml.explainability import global_importance_list, local_explanation  # noqa: E402
 from ml.prediction_extras import top_local_factors, uncertainty_from_probability  # noqa: E402
@@ -285,9 +285,9 @@ def explain(
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     msg = (
-        "SHAP TreeExplainer values show each feature's contribution to this prediction (class: at risk)."
+        "Detailed breakdown: which parts of your check-in had the most influence on the score for this run."
         if method == "shap_tree"
-        else "Approximate ranking uses RF feature_importances_ × |value − training median|; install `shap` for Tree SHAP."
+        else "Simpler ranking of which answers stood out for this run; a more detailed view may be available in some setups."
     )
     return ExplainResponse(
         method=method,
@@ -301,7 +301,7 @@ def explain(
 
 @app.post("/chat/support", response_model=SupportChatResponse)
 def chat_support(body: SupportChatRequest) -> SupportChatResponse:
-    """Supportive, non-diagnostic chat. Not a substitute for professional care."""
+    """Rule-based supportive chat. Not a substitute for professional care."""
     out = generate_support_reply(body.message, body.context)
     return SupportChatResponse(
         reply=out["reply"],

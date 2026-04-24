@@ -2,6 +2,25 @@
 
 from __future__ import annotations
 
+# Short, unique lines for the dashboard—no training-data or model-internals wording.
+FEATURE_STUDENT_NOTES: dict[str, str] = {
+    "year_of_study": "Your place in the program is part of what you shared here.",
+    "gpa": "How your overall grades are doing is part of this picture.",
+    "study_hours": "The time you put into studying shows up in this check-in.",
+    "attendance": "Showing up to class is one thread in this snapshot.",
+    "motivation": "How driven you feel about school is reflected here.",
+    "quiet_environment": "Having a calmer place to work is in the mix.",
+    "mental_health": "How you are doing emotionally is one important piece.",
+    "sleep_quality": "Rest and sleep patterns are part of the story you told us.",
+    "stress_academic": "How heavy school pressure feels is showing up here.",
+    "breaks_relaxation": "Whether you can take breaks and unwind matters in this view.",
+    "electricity_stability": "Reliable power for studying feeds into this summary.",
+    "internet_stability": "Steady internet for learning is part of what you shared.",
+    "economic_political_impact": "Day-to-day money stress is reflected in this check-in.",
+    "war_conflict_impact": "Stress from conflict or safety concerns is in the picture.",
+    "crisis_exposure_index": "Overall strain from the pressures around you is captured here.",
+}
+
 FEATURE_LABELS: dict[str, str] = {
     "year_of_study": "Year of study",
     "gpa": "GPA band",
@@ -22,18 +41,18 @@ FEATURE_LABELS: dict[str, str] = {
 
 
 def uncertainty_from_probability(p_risk: float) -> tuple[float, str]:
-    """Proxy: high when probability is near 0.5. Returns (score 0–1, supportive note)."""
+    """Proxy: high when probability is near 0.5. Returns (score 0–1, short supportive note)."""
     p = max(0.0, min(1.0, float(p_risk)))
     u = float(1.0 - abs(p - 0.5) * 2.0)
     if u >= 0.75:
         msg = (
-            "This score is fairly close to the decision boundary - treat it as a gentle signal "
-            "for reflection or support, not a final judgment."
+            "This result sits in a middle range—use it as a nudge to notice patterns, not a final "
+            "verdict on you."
         )
     elif u >= 0.5:
-        msg = "The model is moderately confident; your own situation still matters most."
+        msg = "Treat this as one snapshot. How you are actually doing day to day still comes first."
     else:
-        msg = "The model leans clearer here - still combine with how you feel day to day."
+        msg = "The picture is a bit one-sided for this check-in—still line it up with how you feel in real life."
     return u, msg
 
 
@@ -46,8 +65,8 @@ def top_local_factors(
     top_k: int = 3,
 ) -> list[dict[str, str | float]]:
     """
-    Rank features by importance × |value − training median| for this row.
-    Falls back to global importance-only ranking if medians/importances missing.
+    Rank features by (global importance) × (distance from stored reference) for this row.
+    Falls back to global importance only if medians/importances are missing.
     """
     if not importances:
         return []
@@ -75,8 +94,10 @@ def top_local_factors(
                 "feature": name,
                 "label": label,
                 "share_percent": pct,
-                "note": "This theme stands out relative to typical responses in the training data - "
-                "small, realistic steps still count.",
+                "note": FEATURE_STUDENT_NOTES.get(
+                    name,
+                    "This is one of the areas from your check-in that stood out most in this list.",
+                ),
             }
         )
     return out
