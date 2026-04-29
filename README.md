@@ -88,13 +88,41 @@ On Windows, if `streamlit` is not on `PATH`, `python -m streamlit` is the reliab
 | `POST` | `/predict` | Risk label, probability, uncertainty text, fast approximate top factors |
 | `GET` | `/feature-importance` | Global Gini importances from the saved forest |
 | `POST` | `/explain` | Local explanation (Tree SHAP when available, else same-family approximate ranker) |
-| `POST` | `/chat/support` | Rule-based supportive reply; optional JSON `context` from last prediction |
+| `POST` | `/chat/support` | Supportive reply (OpenAI-backed if enabled; otherwise fallback rule-based); optional `context` + `history` |
 
 Request/response schemas are documented in OpenAPI (`/docs`).
 
 ## Support chat (safety note)
 
 Responses are **empathetic and non-diagnostic**. They **do not** provide therapy, diagnosis, or treatment. For crisis situations, users should contact **local emergency services** or a **human crisis line**; the app includes keyword-based escalation messaging, which is **not** a substitute for professional care.
+
+## Optional: Enable OpenAI for Support Chat
+
+By default, support chat uses a local, rule-based fallback.
+
+To enable OpenAI for `POST /chat/support`:
+
+1. Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+2. Create a local `.env` in the repo root (do not commit it) with:
+
+```text
+OPENAI_API_KEY=your_key_here
+USE_OPENAI_CHAT=true
+OPENAI_MODEL=gpt-4o-mini
+```
+
+3. Start the backend normally:
+
+```bash
+uvicorn backend.app:app --reload --app-dir .
+```
+
+When enabled, the backend will return `provider="openai"` in the `/chat/support` response. If the key is missing or the OpenAI call fails, it will fallback to the local rule-based chat with `provider="fallback"`.
 
 ## Tests
 

@@ -216,7 +216,15 @@ def call_support(api_base: str, message: str, context: dict | None) -> dict:
     url = api_base.rstrip("/") + "/chat/support"
     r = requests.post(
         url,
-        json={"message": message, "context": context},
+        json={
+            "message": message,
+            "context": context,
+            "history": [
+                {"role": m.get("role"), "content": m.get("content")}
+                for m in (st.session_state.chat_messages or [])[-20:]
+                if m.get("role") in ("user", "assistant") and (m.get("content") or "").strip()
+            ],
+        },
         timeout=30,
     )
     r.raise_for_status()
@@ -838,11 +846,11 @@ def render_progress() -> None:
 def _insight_direction_plain(direction: str | None) -> str:
     d = (direction or "").strip()
     if d == "increases_estimated_risk":
-        return "In this check-in, this area nudges the result toward needing more support."
+        return "This pushed your score toward **more need for support** in this check-in."
     if d == "decreases_estimated_risk":
-        return "In this check-in, this area nudges the result toward a steadier picture."
+        return "This pushed your score toward a **steadier picture** in this check-in."
     if d == "neutral":
-        return "This area did not swing the result very much either way here."
+        return "This did not strongly push the score up or down here."
     return d or "—"
 
 
@@ -850,20 +858,19 @@ def explain_factors_to_dataframe(ex: dict) -> pd.DataFrame:
     """Display table for the Insights tab: plain language, no internal codes as labels."""
     rows: list[dict[str, object]] = []
     for f in ex.get("factors") or []:
-        label = f.get("label", "—")
+        label = f.get("display_name") or f.get("label", "—")
         val = f.get("feature_value", "—")
         if f.get("method") == "shap_tree":
             rows.append(
                 {
                     "Area": label,
-                    "What it suggests for you": _insight_direction_plain(
-                        str(f.get("direction"))
-                    ),
+                    "What it suggests for you": str(f.get("explanation_text") or "").strip()
+                    or _insight_direction_plain(str(f.get("direction"))),
                     "The level in your check-in": val,
                 }
             )
         else:
-            n = (f.get("note") or "").strip()
+            n = (f.get("explanation_text") or f.get("note") or "").strip()
             rows.append(
                 {
                     "Area": label,
@@ -880,7 +887,7 @@ def render_insights_tab(api_base: str, feature_payload: dict) -> None:
     st.markdown(f"### {COPY['insights_title']}")
     st.markdown(COPY["insights_blurb"])
 
-    st.markdown("#### What may be driving your result")
+    st.markdown("#### Personal explanation for this check-in")
     if st.button(COPY["insight_drivers_button"], key="btn_expl_main"):
         with st.spinner("Preparing your insight…"):
             try:
@@ -894,22 +901,39 @@ def render_insights_tab(api_base: str, feature_payload: dict) -> None:
             "Check-in score (this view)",
             f"{float(rp):.0%}" if rp is not None else "—",
         )
+        st.caption(
+            "Method used: **SHAP (local explanation)**"
+            if ex.get("method") == "shap_tree"
+            else "Method used: **Approximate fallback** (SHAP not available in this setup)"
+        )
         if is_admin():
             with st.expander("Technical details (admin)"):
                 st.code(
                     f"method={ex.get('method')}\n{ex.get('message', '')}",
                     language="text",
                 )
-        df_ex = explain_factors_to_dataframe(ex)
-        if not df_ex.empty:
-            st.dataframe(df_ex, use_container_width=True, hide_index=True)
-        else:
+        factors = list(ex.get("factors") or [])
+        inc = [f for f in factors if str(f.get("direction")) == "increases_estimated_risk"]
+        dec = [f for f in factors if str(f.get("direction")) == "decreases_estimated_risk"]
+        other = [f for f in factors if f not in inc and f not in dec]
+
+        if inc:
+            st.markdown("**May increase need for support**")
+            st.dataframe(explain_factors_to_dataframe({"factors": inc}), use_container_width=True, hide_index=True)
+        if dec:
+            st.markdown("**May support a steadier picture**")
+            st.dataframe(explain_factors_to_dataframe({"factors": dec}), use_container_width=True, hide_index=True)
+        if other and is_admin():
+            st.markdown("**Other factors (admin)**")
+            st.dataframe(explain_factors_to_dataframe({"factors": other}), use_container_width=True, hide_index=True)
+        if not inc and not dec and not other:
             st.caption("No rows returned for this insight.")
 
     st.divider()
-    st.markdown("#### Patterns that often matter")
+    st.markdown("#### Overall model patterns")
     st.caption(
-        "A general view across many check-ins—use it as context, not a personal diagnosis."
+        "This section shows which features the model relied on most across the training data. "
+        "It is **not personalized** to your current check-in."
     )
     if st.button(COPY["insight_common_button"], key="btn_imp_main"):
         with st.spinner("Loading…"):
@@ -922,6 +946,9 @@ def render_insights_tab(api_base: str, feature_payload: dict) -> None:
         if is_admin():
             st.caption(g.get("source", ""))
         feat_df = pd.DataFrame(g.get("features", []))
+        if not is_admin() and not feat_df.empty and "feature" in feat_df.columns:
+            # Hide features that are not explicitly collected in the UI.
+            feat_df = feat_df[feat_df["feature"] != "year_of_study"].copy()
         if feat_df.empty or "label" not in feat_df.columns or "importance" not in feat_df.columns:
             st.caption("No pattern data to display right now.")
             if is_admin() and not feat_df.empty:
@@ -972,6 +999,8 @@ def render_support_tab(api_base: str) -> None:
         else:
             st.markdown("**Support:**")
             st.write(msg.get("content", ""))
+            if msg.get("provider"):
+                st.caption(f"Provider: {msg.get('provider')}")
             if msg.get("actions"):
                 st.caption("Ideas: " + " · ".join(msg["actions"]))
 
@@ -998,6 +1027,7 @@ def render_support_tab(api_base: str) -> None:
                     "role": "assistant",
                     "content": out["reply"],
                     "actions": out.get("supportive_actions") or [],
+                    "provider": out.get("provider"),
                 }
             )
         except Exception as e:

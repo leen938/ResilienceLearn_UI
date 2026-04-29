@@ -160,7 +160,11 @@ _GENERAL_OPENERS = (
 )
 
 
-def generate_support_reply(message: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+def generate_support_reply(
+    message: str,
+    context: dict[str, Any] | None = None,
+    history: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     raw = message.strip()
     if not raw:
         return {

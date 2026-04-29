@@ -86,3 +86,21 @@ def test_explain_when_model_present() -> None:
     assert len(factors) >= 1
     for f in factors:
         assert f.get("method") in ("shap_tree", "approximate")
+        # New user-facing fields
+        assert f.get("display_name")
+        assert f.get("explanation_text")
+        assert f.get("strength") in ("high", "medium", "low")
+        assert f.get("direction") in (
+            "increases_estimated_risk",
+            "decreases_estimated_risk",
+            "neutral",
+        )
+        # Hide features not explicitly collected in UI by default
+        assert f.get("feature") != "year_of_study"
+
+    # If CEI appears in top factors, it should have a clear explanation
+    cei = [f for f in factors if f.get("feature") == "crisis_exposure_index"]
+    if cei:
+        text = str(cei[0].get("explanation_text") or "").lower()
+        assert "crisis exposure" in text or "cei" in text
+        assert "electricity" in text and "internet" in text

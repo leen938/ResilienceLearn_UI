@@ -6,6 +6,7 @@ Run from project root:
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -21,10 +22,49 @@ import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
+from dotenv import load_dotenv
+
+try:
+    from openai import OpenAI
+except Exception:  # pragma: no cover
+    OpenAI = None  # type: ignore[assignment]
 
 from ml.explainability import global_importance_list, local_explanation  # noqa: E402
 from ml.prediction_extras import top_local_factors, uncertainty_from_probability  # noqa: E402
 from ml.support_chat import generate_support_reply  # noqa: E402
+
+_dotenv_path = ROOT / ".env"
+_dotenv_loaded = load_dotenv(dotenv_path=_dotenv_path, override=False)
+logger = logging.getLogger("resiliencelearn")
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO)
+
+# Startup diagnostics (no secrets).
+_raw_use_openai = os.environ.get("USE_OPENAI_CHAT", "")
+_raw_llm_enabled = os.environ.get("LLM_SUPPORT_ENABLED", "")
+_raw_llm_provider = os.environ.get("LLM_PROVIDER", "")
+_parsed_use_openai = _raw_use_openai.strip().lower() in {"1", "true", "yes", "on"} or (
+    _raw_llm_enabled.strip().lower() in {"1", "true", "yes", "on"}
+    and _raw_llm_provider.strip().lower() == "openai"
+)
+_api_key_present = bool(os.environ.get("OPENAI_API_KEY", "").strip())
+_model_name = (os.environ.get("OPENAI_MODEL", "") or os.environ.get("LLM_MODEL_NAME", "") or "gpt-4o-mini").strip()
+logger.info(
+    "startup dotenv_loaded=%s dotenv_path=%s exists=%s",
+    _dotenv_loaded,
+    str(_dotenv_path),
+    _dotenv_path.is_file(),
+)
+logger.info(
+    "startup openai_config use_openai_raw=%r llm_support_enabled_raw=%r llm_provider_raw=%r use_openai_parsed=%s api_key_present=%s model=%r openai_sdk_available=%s",
+    _raw_use_openai,
+    _raw_llm_enabled,
+    _raw_llm_provider,
+    _parsed_use_openai,
+    _api_key_present,
+    _model_name,
+    OpenAI is not None,
+)
 
 ARTIFACT_PATH = ROOT / "artifacts" / "model.joblib"
 
@@ -114,10 +154,13 @@ class ExplainFactorShap(BaseModel):
 
     feature: str
     label: str
+    display_name: str
     method: Literal["shap_tree"] = "shap_tree"
     shap_value: float
     direction: str
+    strength: str
     feature_value: float
+    explanation_text: str
     rank: int
 
 
@@ -126,10 +169,14 @@ class ExplainFactorApprox(BaseModel):
 
     feature: str
     label: str
+    display_name: str
     method: Literal["approximate"] = "approximate"
     approx_share_percent: float
     note: str
     feature_value: float
+    direction: str
+    strength: str
+    explanation_text: str
     rank: int
 
 
@@ -164,6 +211,13 @@ def _coerce_explain_factors(raw: list[dict[str, Any]]) -> list[ExplainFactorItem
 class SupportChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=6000)
     context: dict[str, Any] | None = None
+    history: list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "Optional recent chat messages for conversational continuity. "
+            "Each item should look like {'role': 'user'|'assistant', 'content': '...'}."
+        ),
+    )
 
 
 class SupportChatResponse(BaseModel):
@@ -172,6 +226,7 @@ class SupportChatResponse(BaseModel):
     supportive_actions: list[str] = Field(default_factory=list)
     check_in_prompt: str | None = None
     safety_note: str
+    provider: Literal["openai", "fallback"] = "fallback"
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -257,6 +312,10 @@ def predict(body: PredictRequest) -> PredictResponse:
 def explain(
     body: PredictRequest,
     top_k: int = Query(5, ge=1, le=20, description="Number of top local factors to return"),
+    include_hidden: bool = Query(
+        False,
+        description="Include features not explicitly collected in the UI (e.g., year_of_study).",
+    ),
 ) -> ExplainResponse:
     """Local explanation for one row: SHAP TreeExplainer when available, else approximate ranker."""
     try:
@@ -279,7 +338,7 @@ def explain(
     pred = int(model.predict(X)[0])
     status = "AT RISK" if pred == 1 else "ON TRACK"
 
-    method, raw_factors = local_explanation(bundle, row, top_k=top_k)
+    method, raw_factors = local_explanation(bundle, row, top_k=top_k, include_hidden=include_hidden)
     try:
         factors = _coerce_explain_factors(raw_factors)
     except ValueError as e:
@@ -301,12 +360,123 @@ def explain(
 
 @app.post("/chat/support", response_model=SupportChatResponse)
 def chat_support(body: SupportChatRequest) -> SupportChatResponse:
-    """Rule-based supportive chat. Not a substitute for professional care."""
-    out = generate_support_reply(body.message, body.context)
+    """Supportive, non-diagnostic chat. Not a substitute for professional care."""
+    raw_use_openai = os.environ.get("USE_OPENAI_CHAT", "")
+    raw_llm_enabled = os.environ.get("LLM_SUPPORT_ENABLED", "")
+    raw_llm_provider = os.environ.get("LLM_PROVIDER", "")
+    use_openai = raw_use_openai.strip().lower() in {"1", "true", "yes", "on"} or (
+        raw_llm_enabled.strip().lower() in {"1", "true", "yes", "on"}
+        and raw_llm_provider.strip().lower() == "openai"
+    )
+    api_key_present = bool(os.environ.get("OPENAI_API_KEY", "").strip())
+    model_name = (os.environ.get("OPENAI_MODEL", "") or os.environ.get("LLM_MODEL_NAME", "") or "gpt-4o-mini").strip()
+
+    logger.info(
+        "chat_support gating use_openai_raw=%r llm_support_enabled_raw=%r llm_provider_raw=%r use_openai=%s api_key_present=%s openai_sdk_available=%s model=%r",
+        raw_use_openai,
+        raw_llm_enabled,
+        raw_llm_provider,
+        use_openai,
+        api_key_present,
+        OpenAI is not None,
+        model_name,
+    )
+
+    if use_openai and api_key_present and OpenAI is not None:
+        logger.info("chat_support attempting provider=openai")
+        try:
+            client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
+            system = (
+                "You are a warm, emotionally intelligent, human-like supportive chat companion for students.\n"
+                "\n"
+                "Tone + style:\n"
+                "- Sound natural, kind, and grounded (like a good friend who listens well).\n"
+                "- Keep responses concise but meaningful: 3–6 sentences.\n"
+                "- Avoid robotic phrasing, bullet-point lectures, and repeated templates.\n"
+                "- Reflect the user's emotion in your first sentence (validate without exaggerating).\n"
+                "- Prefer simple language over clinical terms.\n"
+                "\n"
+                "Conversation behavior:\n"
+                "- Ask at most ONE gentle follow-up question when it would help.\n"
+                "- If the user seems overwhelmed, help narrow to one small next step.\n"
+                "- If the user is venting, prioritize listening over advice.\n"
+                "\n"
+                "Safety:\n"
+                "- You are NOT a therapist or doctor. Do not diagnose.\n"
+                "- Do not make medical/clinical claims or provide treatment instructions.\n"
+                "- If the user expresses self-harm or suicidal intent, respond with calm urgency and encourage contacting local emergency services, "
+                "a crisis hotline, or a trusted person right now.\n"
+            )
+
+            messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+
+            # Optional check-in context (keep short).
+            ctx = body.context or {}
+            ctx_lines: list[str] = []
+            if ctx.get("status_label"):
+                ctx_lines.append(f"Latest check-in status label (informational): {ctx['status_label']}")
+            if ctx.get("uncertainty_message"):
+                ctx_lines.append(f"Uncertainty note: {ctx['uncertainty_message']}")
+            if ctx.get("top_factors") and isinstance(ctx.get("top_factors"), list):
+                labels = []
+                for tf in (ctx.get("top_factors") or [])[:2]:
+                    if isinstance(tf, dict) and tf.get("label"):
+                        labels.append(str(tf["label"]))
+                if labels:
+                    ctx_lines.append("Themes from last snapshot: " + ", ".join(labels))
+            if ctx_lines:
+                messages.append({"role": "system", "content": "Optional context:\n" + "\n".join(ctx_lines)})
+
+            # Short recent history for conversational continuity.
+            if body.history:
+                for item in body.history[-12:]:
+                    role = str(item.get("role", "")).lower().strip()
+                    content = str(item.get("content", "")).strip()
+                    if role in {"user", "assistant"} and content:
+                        messages.append({"role": role, "content": content})
+
+            messages.append({"role": "user", "content": body.message})
+
+            resp = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=0.8,
+                max_tokens=260,
+            )
+            reply = (resp.choices[0].message.content or "").strip()
+            if reply:
+                logger.info("chat_support provider=openai model=%s", model_name)
+                return SupportChatResponse(
+                    reply=reply,
+                    mood_detected=None,
+                    supportive_actions=[],
+                    check_in_prompt=None,
+                    safety_note=(
+                        "I am not a therapist or doctor and cannot diagnose or treat anything. "
+                        "If you are in immediate danger, contact local emergency services or someone you trust right away."
+                    ),
+                    provider="openai",
+                )
+        except Exception as e:
+            logger.exception("chat_support provider=openai failed: %s", str(e))
+    else:
+        reasons: list[str] = []
+        if not use_openai:
+            reasons.append("OpenAI not enabled (USE_OPENAI_CHAT or LLM_SUPPORT_ENABLED/LLM_PROVIDER)")
+        if not api_key_present:
+            reasons.append("OPENAI_API_KEY missing/empty")
+        if OpenAI is None:
+            reasons.append("OpenAI SDK not importable (missing dependency?)")
+        logger.info("chat_support skipping openai reasons=%s", "; ".join(reasons) if reasons else "unknown")
+
+    out = generate_support_reply(body.message, body.context, history=body.history)
+    logger.info("chat_support provider=fallback")
     return SupportChatResponse(
         reply=out["reply"],
         mood_detected=out.get("mood_detected"),
         supportive_actions=list(out.get("supportive_actions") or []),
         check_in_prompt=out.get("check_in_prompt"),
         safety_note=str(out.get("safety_note") or ""),
+        provider="fallback",
     )
