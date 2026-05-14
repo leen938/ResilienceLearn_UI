@@ -134,3 +134,4 @@ pytest tests/ -q
 ```
 
 Some tests **skip** if `artifacts/model.joblib` is missing; place an artifact (via training) to run the full set.
+
